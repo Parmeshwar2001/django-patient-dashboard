@@ -1,0 +1,16 @@
+body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.card {
+    transition: transform 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.table th, .table td {
+    text-align: center;
+    vertical-align: middle;
+}

@@ -1,0 +1,253 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Patient Analytics Dashboard</title>
+
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <link rel="stylesheet" href="{% static 'patients/style.css' %}">
+</head>
+<body class="bg-light">
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">🏥 Patient Analytics</a>
+        </div>
+    </nav>
+
+    <div class="container my-4">
+
+        <!-- Summary Cards -->
+        <div class="row g-4 text-center">
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <h5 class="text-muted">Total Patients</h5>
+                        <h2 class="fw-bold text-primary">{{ total_patients }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <h5 class="text-muted">Male Patients</h5>
+                        <h2 class="fw-bold text-info">{{ male_count }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <h5 class="text-muted">Female Patients</h5>
+                        <h2 class="fw-bold text-danger">{{ female_count }}</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="row my-4">
+            <div class="col-md-3">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white fw-bold">Gender Distribution</div>
+                    <div class="card-body">
+                        <canvas id="genderChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white fw-bold">State-wise Patient Count</div>
+                    <div class="card-body">
+                        <canvas id="stateChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table Section -->
+        <div class="card shadow-sm border-0 my-4">
+            <div class="card-header bg-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>Patient Details</span>
+
+                <div class="d-flex gap-2">
+                    <select id="stateFilter" class="form-select">
+                        <option value="all">All States</option>
+                        {% for s in states %}
+                            <option value="{{ s }}">{{ s }}</option>
+                        {% endfor %}
+                    </select>
+
+                    <select id="genderFilter" class="form-select">
+                        <option value="all">All Genders</option>
+                        {% for g in genders %}
+                            <option value="{{ g }}">{{ g }}</option>
+                        {% endfor %}
+                    </select>
+
+                    <input type="text" id="searchInput" class="form-control" placeholder="Search by City...">
+                    <button id="exportBtn" class="btn btn-success">Export CSV</button>
+                </div>
+            </div>
+
+            <div class="card-body table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-primary">
+                        <tr>
+                            <th>First</th>
+                            <th>Last</th>
+                            <th>Gender</th>
+                            <th>City</th>
+                            <th>State</th>
+                            <th>Birthdate</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patientTable">
+                        {% for p in patients %}
+                        <tr>
+                            <td>{{ p.FIRST }}</td>
+                            <td>{{ p.LAST }}</td>
+                            <td>{{ p.GENDER }}</td>
+                            <td>{{ p.CITY }}</td>
+                            <td>{{ p.STATE }}</td>
+                            <td>{{ p.BIRTHDATE }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // === Gender Chart ===
+    const genderCtx = document.getElementById('genderChart');
+    const genderChart = new Chart(genderCtx, {
+        type: 'pie',
+        data: {
+            labels: ['Male', 'Female'],
+            datasets: [{
+                data: [{{ male_count }}, {{ female_count }}],
+                backgroundColor: ['#4e73df', '#e74a3b']
+            }]
+        }
+    });
+
+    // === State Chart ===
+    const stateCounts = {{ state_counts|safe }};
+    const stateCtx = document.getElementById('stateChart');
+    const stateChart = new Chart(stateCtx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(stateCounts),
+            datasets: [{
+                label: 'Patients per State',
+                data: Object.values(stateCounts),
+                backgroundColor: '#36b9cc'
+            }]
+        },
+        options: {
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+
+    // === Filtering Logic ===
+    const searchInput = document.getElementById('searchInput');
+    const stateFilter = document.getElementById('stateFilter');
+    const genderFilter = document.getElementById('genderFilter');
+    const tableRows = document.querySelectorAll('#patientTable tr');
+
+    function filterTable() {
+        const searchText = searchInput.value.toLowerCase();
+        const selectedState = stateFilter.value;
+        const selectedGender = genderFilter.value;
+
+        let male = 0, female = 0;
+        const stateCountMap = {};
+
+        tableRows.forEach(row => {
+            const gender = row.cells[2].textContent;
+            const city = row.cells[3].textContent.toLowerCase();
+            const state = row.cells[4].textContent;
+
+            const matchesSearch = city.includes(searchText);
+            const matchesState = selectedState === "all" || state === selectedState;
+            const matchesGender = selectedGender === "all" || gender === selectedGender;
+
+            if (matchesSearch && matchesState && matchesGender) {
+                row.style.display = '';
+                // count for charts
+                if (gender === "M") male++;
+                if (gender === "F") female++;
+                stateCountMap[state] = (stateCountMap[state] || 0) + 1;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+
+        // Update charts dynamically
+        genderChart.data.datasets[0].data = [male, female];
+        genderChart.update();
+
+        stateChart.data.labels = Object.keys(stateCountMap);
+        stateChart.data.datasets[0].data = Object.values(stateCountMap);
+        stateChart.update();
+    }
+
+    // Event listeners
+    searchInput.addEventListener('keyup', filterTable);
+    stateFilter.addEventListener('change', filterTable);
+    genderFilter.addEventListener('change', filterTable);
+</script>
+<script>
+    // === Export Visible Rows to CSV ===
+    const exportBtn = document.getElementById('exportBtn');
+
+    exportBtn.addEventListener('click', () => {
+        const visibleRows = Array.from(document.querySelectorAll('#patientTable tr'))
+            .filter(row => row.style.display !== 'none');
+
+        if (visibleRows.length === 0) {
+            alert('No data available to export.');
+            return;
+        }
+
+        // Extract table headers
+        const headers = ['First', 'Last', 'Gender', 'City', 'State', 'Birthdate'];
+        const csvRows = [headers.join(',')];
+
+        // Extract visible data
+        visibleRows.forEach(row => {
+            const cells = Array.from(row.cells).map(td => `"${td.textContent.trim()}"`);
+            csvRows.push(cells.join(','));
+        });
+
+        // Convert to CSV Blob
+        const csvData = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+        const csvUrl = URL.createObjectURL(csvData);
+
+        // Create a hidden download link
+        const link = document.createElement('a');
+        link.href = csvUrl;
+        link.download = 'filtered_patients.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+</script>
+
+
+
+</body>
+</html>
